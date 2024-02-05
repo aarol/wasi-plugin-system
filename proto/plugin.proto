@@ -2,14 +2,27 @@ syntax = "proto3";
 
 package plugin;
 
-message Request {
-  string input = 1;
+message SyntaxRequest {
+  string code = 1;
+  string language = 2;
 }
 
-message Response {
+message VersionRequest {}
+message VersionResponse {
+  string version = 1;
+}
+
+message SyntaxResponse {
   string output = 1;
 }
 
+message Request {
+  oneof req {
+    SyntaxRequest syntax_request = 1;
+    VersionRequest version_request = 2;
+  }
+}
+
 service PluginService {
-  rpc Call (Request) returns (Response);
+  rpc Highlight (Request) returns (SyntaxResponse);
 }

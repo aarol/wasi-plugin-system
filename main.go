@@ -22,7 +22,9 @@ func main() {
 
 	wasi_snapshot_preview1.MustInstantiate(context.Background(), r)
 
-	req := proto.Request{Input: "Hello, Wasm"}
+	req := proto.Request{
+		Req: &proto.Request_VersionRequest{},
+	}
 
 	b, err := protobuf.Marshal(&req)
 	if err != nil {
@@ -43,10 +45,10 @@ func main() {
 		return
 	}
 
-	var res proto.Response
+	var res proto.SyntaxResponse
 	err = protobuf.Unmarshal(stdout.Bytes(), &res)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Response:", res.Output)
+	fmt.Println(res.Output)
 }
