@@ -1,37 +1,59 @@
-use std::io::{self, BufRead, Write};
+use std::{
+    io::{self, BufRead, Write},
+    thread,
+    time::Duration,
+};
 
 use plugin::request;
 use prost::Message;
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 pub mod plugin {
-    include!(concat!(env!("OUT_DIR"), "/plugin.rs"));
+    include!(concat!(env!("OUT_DIR"), "/wasi_plugin.rs"));
 }
 
 fn main() {
     let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-    let buffer = stdin.fill_buf().unwrap();
+    let mut stdin: io::StdinLock<'_> = stdin.lock();
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
 
+    let info = plugin::PluginInfo {
+        name: "".into(),
+        events: vec!["syntax-highlight".to_string()],
+    };
+
+    stdout
+        .write_all(&info.encode_length_delimited_to_vec())
+        .expect("Write stdout");
+    // let read = stdin.fill_buf().expect("Read stdin");
+
+    // plugin::Request::decode_length_delimited(read).expect("Decode stdin");
+    return;
     let ps = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
 
-    let request = plugin::Request::decode(buffer).expect("Failed to decode request");
+    loop {
+        let mut buf = Vec::new();
 
-    match request.req {
-        Some(request::Req::SyntaxRequest(r)) => {
-            let syntax = ps.find_syntax_by_extension(&r.language).unwrap();
-            let html = syntect::html::highlighted_html_for_string(
-                &r.code,
-                &ps,
-                syntax,
-                &ts.themes["base16-ocean.dark"],
-            )
-            .unwrap();
+        let request = plugin::Request::decode(buf.as_slice()).expect("Failed to decode request");
 
-            let res = plugin::SyntaxResponse { output: html };
-            io::stdout().write(&res.encode_to_vec()).unwrap();
+        match request.req {
+            Some(request::Req::SyntaxRequest(r)) => {
+                let syntax = ps.find_syntax_by_extension(&r.language).unwrap();
+                let html = syntect::html::highlighted_html_for_string(
+                    &r.code,
+                    &ps,
+                    syntax,
+                    &ts.themes["base16-ocean.dark"],
+                )
+                .unwrap();
+
+                let res = plugin::SyntaxResponse { output: html };
+                io::stdout().write(&res.encode_to_vec()).unwrap();
+            }
+            _ => {}
         }
-        None => todo!(),
+        io::stdout().write(b"\n").unwrap();
     }
 }

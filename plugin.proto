@@ -1,6 +1,11 @@
 syntax = "proto3";
 
-package plugin;
+package wasi_plugin;
+
+message PluginInfo {
+  string name = 1;
+  repeated string events = 2;
+}
 
 message SyntaxRequest {
   string code = 1;
@@ -21,8 +26,4 @@ message Request {
     SyntaxRequest syntax_request = 1;
     VersionRequest version_request = 2;
   }
-}
-
-service PluginService {
-  rpc Highlight (Request) returns (SyntaxResponse);
 }
