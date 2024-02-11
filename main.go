@@ -1,15 +1,17 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
+	"time"
 
 	"github.com/aarol/wasi-plugin-system/gen/plugin"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
-	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:embed wasm/target/wasm32-wasi/release/plugin.wasm
@@ -22,20 +24,57 @@ func main() {
 
 	wasi_snapshot_preview1.MustInstantiate(context.Background(), r)
 
-	stdin := bufio.NewReadWriter()
-	var stdout bufio.ReadWriter
-	var stderr bufio.ReadWriter
-	config := wazero.NewModuleConfig().WithStdin(&stdin).WithStdout(&stdout).WithStderr(&stderr)
+	req := plugin.Request{
+		Req: &plugin.Request_SyntaxRequest{
+			SyntaxRequest: &plugin.SyntaxRequest{
+				Code: "let a = 56;", Language: "rs",
+			},
+		},
+	}
+	stdinReader, stdinWriter := io.Pipe()
+	stdoutReader, stdoutWriter := io.Pipe()
+	var stderr bytes.Buffer
 
-	_, err := r.InstantiateWithConfig(context.Background(), syntaxPlugin, config)
+	defer func() {
+		err := recover()
+		if err != nil {
+			fmt.Println("Panic")
+			fmt.Println(stderr.String())
+		}
+	}()
+
+	config := wazero.NewModuleConfig().WithStdin(stdinReader).WithStdout(stdoutWriter).WithStderr(&stderr)
+
+	compiled, err := r.CompileModule(context.Background(), syntaxPlugin)
+	if err != nil {
+		panic(err)
+	}
+	// now := time.Now()
+	_, err = r.InstantiateModule(context.Background(), compiled, config)
 	if err != nil {
 		panic(err)
 	}
 
-	var info plugin.PluginInfo
+	b, err := proto.Marshal(&req)
+	must(err)
 
-	protodelim.UnmarshalFrom(bufio.NewReader(&stdout), &info)
-	fmt.Println(info.Events)
+	x := plugin.PluginInfo{
+		Events: []plugin.Events{plugin.Events_SYNTAX_HIGHLIGHT},
+	}
+
+	b, err = proto.Marshal(&x)
+	must(err)
+	_, err = stdinWriter.Write(b)
+	must(err)
+
+	if stderr.Len() > 0 {
+		fmt.Println("Stderr:", stderr.String())
+	}
+	var res plugin.SyntaxResponse
+	must(proto.Unmarshal(stdoutReader, &res))
+
+	fmt.Println("Elapsed", time.Since(now).Milliseconds())
+	fmt.Println(res.Output)
 }
 
 func must(err error) {

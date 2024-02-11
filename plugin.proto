@@ -2,9 +2,14 @@ syntax = "proto3";
 
 package wasi_plugin;
 
+enum Events {
+  NONE = 0;
+  SYNTAX_HIGHLIGHT = 1;
+}
+
 message PluginInfo {
   string name = 1;
-  repeated string events = 2;
+  repeated Events events = 2;
 }
 
 message SyntaxRequest {
