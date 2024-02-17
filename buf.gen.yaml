@@ -9,3 +9,4 @@ plugins:
   - plugin: buf.build/protocolbuffers/go
     out: gen/plugin
     opt: paths=source_relative
+

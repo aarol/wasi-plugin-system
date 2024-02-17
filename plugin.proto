@@ -7,23 +7,17 @@ enum Events {
   SYNTAX_HIGHLIGHT = 1;
 }
 
-message PluginInfo {
-  string name = 1;
-  repeated Events events = 2;
-}
-
 message SyntaxRequest {
   string code = 1;
   string language = 2;
+}
+message SyntaxResponse {
+  string output = 1;
 }
 
 message VersionRequest {}
 message VersionResponse {
   string version = 1;
-}
-
-message SyntaxResponse {
-  string output = 1;
 }
 
 message Request {

@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/aarol/wasi-plugin-system/gen/plugin"
+	"github.com/samber/lo"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 //go:embed wasm/target/wasm32-wasi/release/plugin.wasm
@@ -24,61 +26,82 @@ func main() {
 
 	wasi_snapshot_preview1.MustInstantiate(context.Background(), r)
 
-	req := plugin.Request{
-		Req: &plugin.Request_SyntaxRequest{
-			SyntaxRequest: &plugin.SyntaxRequest{
-				Code: "let a = 56;", Language: "rs",
-			},
+	wasmPlugin := lo.Must(NewWasmPlugin(r, syntaxPlugin))
+
+	req := &plugin.Request{Req: &plugin.Request_SyntaxRequest{
+		SyntaxRequest: &plugin.SyntaxRequest{
+			Code:     "let a = 1;",
+			Language: "rs",
 		},
+	}}
+
+	now := time.Now()
+	res := plugin.SyntaxResponse{}
+	lo.Must0(wasmPlugin.Call(req, &res))
+	fmt.Println(res.Output)
+	fmt.Println(time.Since(now).Milliseconds())
+
+	req2 := &plugin.Request{Req: &plugin.Request_VersionRequest{
+		VersionRequest: &plugin.VersionRequest{},
+	}}
+	now = time.Now()
+	var res2 plugin.VersionResponse
+	lo.Must0(wasmPlugin.Call(req2, &res2))
+
+	fmt.Println(time.Since(now).Milliseconds())
+}
+
+type WasmPlugin struct {
+	module  wazero.CompiledModule
+	runtime wazero.Runtime
+}
+
+func NewWasmPlugin(runtime wazero.Runtime, wasm []byte) (*WasmPlugin, error) {
+	module, err := runtime.CompileModule(context.Background(), wasm)
+	if err != nil {
+		return nil, err
 	}
-	stdinReader, stdinWriter := io.Pipe()
-	stdoutReader, stdoutWriter := io.Pipe()
+
+	return &WasmPlugin{
+		runtime: runtime,
+		module:  module,
+	}, nil
+}
+
+func (p *WasmPlugin) Call(req *plugin.Request, res protoreflect.ProtoMessage) (err error) {
+	b, err := proto.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	stdin := bytes.NewReader(b)
+	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	config := wazero.NewModuleConfig().WithStdin(stdin).WithStdout(&stdout).WithStderr(&stderr)
 
 	defer func() {
-		err := recover()
-		if err != nil {
-			fmt.Println("Panic")
-			fmt.Println(stderr.String())
+		recoveredErr := recover()
+		if recoveredErr != nil {
+			if stderr.Len() > 0 {
+				err = errors.New(stderr.String())
+			} else {
+				err = fmt.Errorf("%s", recoveredErr)
+			}
 		}
 	}()
 
-	config := wazero.NewModuleConfig().WithStdin(stdinReader).WithStdout(stdoutWriter).WithStderr(&stderr)
-
-	compiled, err := r.CompileModule(context.Background(), syntaxPlugin)
+	_, err = p.runtime.InstantiateModule(context.Background(), p.module, config)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	// now := time.Now()
-	_, err = r.InstantiateModule(context.Background(), compiled, config)
-	if err != nil {
-		panic(err)
-	}
-
-	b, err := proto.Marshal(&req)
-	must(err)
-
-	x := plugin.PluginInfo{
-		Events: []plugin.Events{plugin.Events_SYNTAX_HIGHLIGHT},
-	}
-
-	b, err = proto.Marshal(&x)
-	must(err)
-	_, err = stdinWriter.Write(b)
-	must(err)
 
 	if stderr.Len() > 0 {
-		fmt.Println("Stderr:", stderr.String())
+		return errors.New(stderr.String())
 	}
-	var res plugin.SyntaxResponse
-	must(proto.Unmarshal(stdoutReader, &res))
 
-	fmt.Println("Elapsed", time.Since(now).Milliseconds())
-	fmt.Println(res.Output)
-}
-
-func must(err error) {
+	err = proto.Unmarshal(stdout.Bytes(), res)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
