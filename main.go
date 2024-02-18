@@ -16,8 +16,11 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-//go:embed wasm/target/wasm32-wasi/release/plugin.wasm
-var syntaxPlugin []byte
+//go:embed rust/target/wasm32-wasi/release/plugin.wasm
+var rustPlugin []byte
+
+//go:embed assemblyscript/build/release.wasm
+var ascPlugin []byte
 
 func main() {
 	r := wazero.NewRuntime(context.Background())
@@ -26,7 +29,7 @@ func main() {
 
 	wasi_snapshot_preview1.MustInstantiate(context.Background(), r)
 
-	wasmPlugin := lo.Must(NewWasmPlugin(r, syntaxPlugin))
+	wasmPlugin := lo.Must(NewWasmPlugin(r, ascPlugin))
 
 	req := &plugin.Request{Req: &plugin.Request_SyntaxRequest{
 		SyntaxRequest: &plugin.SyntaxRequest{
@@ -39,16 +42,20 @@ func main() {
 	res := plugin.SyntaxResponse{}
 	lo.Must0(wasmPlugin.Call(req, &res))
 	fmt.Println(res.Output)
-	fmt.Println(time.Since(now).Milliseconds())
+	fmt.Println(time.Since(now).Microseconds())
 
 	req2 := &plugin.Request{Req: &plugin.Request_VersionRequest{
 		VersionRequest: &plugin.VersionRequest{},
 	}}
-	now = time.Now()
-	var res2 plugin.VersionResponse
-	lo.Must0(wasmPlugin.Call(req2, &res2))
+	for i := 0; i < 100; i++ {
+		now = time.Now()
+		var res2 plugin.VersionResponse
+		lo.Must0(wasmPlugin.Call(req2, &res2))
 
-	fmt.Println(time.Since(now).Milliseconds())
+		fmt.Println(res2.Version)
+
+		fmt.Println(time.Since(now).Microseconds())
+	}
 }
 
 type WasmPlugin struct {
@@ -77,7 +84,7 @@ func (p *WasmPlugin) Call(req *plugin.Request, res protoreflect.ProtoMessage) (e
 	stdin := bytes.NewReader(b)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	config := wazero.NewModuleConfig().WithStdin(stdin).WithStdout(&stdout).WithStderr(&stderr)
+	config := wazero.NewModuleConfig().WithStdin(stdin).WithStdout(&stdout).WithStderr(&stderr).WithEnv("HOST_VERSION", "1.0.0")
 
 	defer func() {
 		recoveredErr := recover()
@@ -89,7 +96,6 @@ func (p *WasmPlugin) Call(req *plugin.Request, res protoreflect.ProtoMessage) (e
 			}
 		}
 	}()
-
 	_, err = p.runtime.InstantiateModule(context.Background(), p.module, config)
 	if err != nil {
 		return err
