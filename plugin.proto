@@ -4,8 +4,14 @@ package wasi_plugin;
 
 enum EVENTS {
   NONE = 0;
-  VERSION = 1;
-  SYNTAX_HIGHLIGHT = 2;
+  SYNTAX_HIGHLIGHT = 1;
+}
+
+message VersionRequest {}
+message VersionResponse {
+  string version = 1;
+  string name = 2;
+  repeated EVENTS events = 3;
 }
 
 message SyntaxRequest {
@@ -16,14 +22,9 @@ message SyntaxResponse {
   string output = 1;
 }
 
-message VersionRequest {}
-message VersionResponse {
-  string version = 1;
-}
-
 message Request {
   oneof req {
-    SyntaxRequest syntax_request = 1;
-    VersionRequest version_request = 2;
+    VersionRequest version_request = 1;
+    SyntaxRequest syntax_request = 2;
   }
 }

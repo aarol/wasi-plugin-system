@@ -1,10 +1,7 @@
-use std::{
-    error::Error,
-    io::{self, Read, Write},
-};
+use std::io::{self, Read, Write};
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
-use plugin::request::Req;
+use plugin::{request::Req, Events};
 use prost::Message;
 
 pub mod plugin {
@@ -17,7 +14,7 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), Box<dyn Error>> {
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let mut stdin: io::StdinLock<'_> = stdin.lock();
 
@@ -46,6 +43,8 @@ fn run() -> Result<(), Box<dyn Error>> {
         Some(Req::VersionRequest(_)) => {
             let res = plugin::VersionResponse {
                 version: "1.0.0".to_owned(),
+                name: "Rust plugin".to_owned(),
+                events: vec![Events::SyntaxHighlight.into()],
             };
             io::stdout().write_all(&res.encode_to_vec())?;
         }
