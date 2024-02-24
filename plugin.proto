@@ -2,9 +2,10 @@ syntax = "proto3";
 
 package wasi_plugin;
 
-enum Events {
+enum EVENTS {
   NONE = 0;
-  SYNTAX_HIGHLIGHT = 1;
+  VERSION = 1;
+  SYNTAX_HIGHLIGHT = 2;
 }
 
 message SyntaxRequest {

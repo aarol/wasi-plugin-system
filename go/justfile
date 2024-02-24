@@ -1,0 +1,10 @@
+set windows-shell := ["powershell.exe", "-Command"]
+
+export GOOS := "wasip1" 
+export GOARCH := "wasm" 
+
+build:
+  go build -o main.wasm .
+
+proto-generate:
+  buf generate ../plugin.proto

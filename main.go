@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/aarol/wasi-plugin-system/gen/plugin"
 	"github.com/samber/lo"
@@ -17,10 +16,13 @@ import (
 )
 
 //go:embed rust/target/wasm32-wasi/release/plugin.wasm
-var rustPlugin []byte
+var rustWasm []byte
 
 //go:embed assemblyscript/build/release.wasm
-var ascPlugin []byte
+var ascWasm []byte
+
+//go:embed go/main.wasm
+var goWasm []byte
 
 func main() {
 	r := wazero.NewRuntime(context.Background())
@@ -29,32 +31,26 @@ func main() {
 
 	wasi_snapshot_preview1.MustInstantiate(context.Background(), r)
 
-	wasmPlugin := lo.Must(NewWasmPlugin(r, ascPlugin))
+	plugins := []*WasmPlugin{}
 
-	req := &plugin.Request{Req: &plugin.Request_SyntaxRequest{
-		SyntaxRequest: &plugin.SyntaxRequest{
-			Code:     "let a = 1;",
-			Language: "rs",
-		},
-	}}
+	goPlugin := lo.Must(NewWasmPlugin(r, goWasm))
+	plugins = append(plugins, goPlugin)
 
-	now := time.Now()
-	res := plugin.SyntaxResponse{}
-	lo.Must0(wasmPlugin.Call(req, &res))
-	fmt.Println(res.Output)
-	fmt.Println(time.Since(now).Microseconds())
+	for _, p := range plugins {
 
-	req2 := &plugin.Request{Req: &plugin.Request_VersionRequest{
-		VersionRequest: &plugin.VersionRequest{},
-	}}
-	for i := 0; i < 100; i++ {
-		now = time.Now()
-		var res2 plugin.VersionResponse
-		lo.Must0(wasmPlugin.Call(req2, &res2))
+		req := plugin.Request{
+			Req: &plugin.Request_SyntaxRequest{
+				SyntaxRequest: &plugin.SyntaxRequest{
+					Code:     "var a = 1",
+					Language: "go",
+				},
+			},
+		}
+		var res plugin.SyntaxResponse
 
-		fmt.Println(res2.Version)
+		lo.Must0(p.Call(&req, &res))
 
-		fmt.Println(time.Since(now).Microseconds())
+		fmt.Println(res.Output)
 	}
 }
 
